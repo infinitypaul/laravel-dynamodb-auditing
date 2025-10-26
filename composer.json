@@ -1,0 +1,42 @@
+{
+    "name": "infinitypaul/laravel-dynamodb-auditing",
+    "description": "DynamoDB driver for Laravel Auditing package",
+    "type": "library",
+    "keywords": ["laravel", "auditing", "dynamodb", "aws"],
+    "license": "MIT",
+    "require": {
+        "php": "^8.1",
+        "laravel/framework": "^10.0|^11.0|^12.0",
+        "owen-it/laravel-auditing": "^13.0|^14.0",
+        "aws/aws-sdk-php": "^3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "orchestra/testbench": "^8.0|^9.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "InfinityPaul\\LaravelDynamoDbAuditing\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "InfinityPaul\\LaravelDynamoDbAuditing\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "InfinityPaul\\LaravelDynamoDbAuditing\\DynamoDbAuditingServiceProvider"
+            ]
+        }
+    },
+    "authors": [
+        {
+            "name": "InfinityPaul",
+            "email": "infinitypaul@live.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

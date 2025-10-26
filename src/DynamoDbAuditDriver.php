@@ -1,0 +1,105 @@
+<?php
+
+namespace InfinityPaul\LaravelDynamoDbAuditing;
+
+use Aws\DynamoDb\DynamoDbClient;
+use Aws\DynamoDb\Marshaler;
+use OwenIt\Auditing\Contracts\Audit;
+use OwenIt\Auditing\Contracts\Auditable;
+use OwenIt\Auditing\Contracts\AuditDriver;
+
+class DynamoDbAuditDriver implements AuditDriver
+{
+    protected DynamoDbClient $dynamoDb;
+    protected Marshaler $marshaler;
+    protected string $tableName;
+
+    public function __construct()
+    {
+        $config = config('dynamodb-auditing.production');
+
+        if (app()->environment('local') && config('dynamodb-auditing.local.endpoint')) {
+            $config = config('dynamodb-auditing.local');
+        }
+
+        $this->dynamoDb = new DynamoDbClient($config);
+        $this->marshaler = new Marshaler();
+        $this->tableName = config('dynamodb-auditing.table_name');
+    }
+
+    public function audit(Auditable $model): ?Audit
+    {
+        try {
+            $auditData = $model->toAudit();
+
+            $auditId = uniqid('audit_', true);
+
+            $item = [
+                'PK' => $this->getPartitionKey($auditData),
+                'SK' => $this->getSortKey($auditData, $auditId),
+                'audit_id' => $auditId,
+                'user_type' => $auditData['user_type'] ?? null,
+                'user_id' => $auditData['user_id'] ?? null,
+                'event' => $auditData['event'] ?? null,
+                'auditable_type' => $auditData['auditable_type'] ?? null,
+                'auditable_id' => $auditData['auditable_id'] ?? null,
+                'old_values' => !empty($auditData['old_values']) ? json_encode($auditData['old_values']) : null,
+                'new_values' => !empty($auditData['new_values']) ? json_encode($auditData['new_values']) : null,
+                'url' => $auditData['url'] ?? null,
+                'ip_address' => $auditData['ip_address'] ?? null,
+                'user_agent' => $auditData['user_agent'] ?? null,
+                'tags' => $auditData['tags'] ?? null,
+                'created_at' => now()->toISOString(),
+                'updated_at' => now()->toISOString(),
+            ];
+
+            $ttl = $this->calculateTTL();
+            if ($ttl !== null) {
+                $item['TTL'] = $ttl;
+            }
+
+            $item = array_filter($item, fn($value) => $value !== null);
+
+            $this->dynamoDb->putItem([
+                'TableName' => $this->tableName,
+                'Item' => $this->marshaler->marshalItem($item),
+            ]);
+
+            return null;
+
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    public function prune(Auditable $model): bool
+    {
+        return true;
+    }
+
+    protected function getPartitionKey(array $auditData): string
+    {
+        if (!empty($auditData['user_id'])) {
+            return "USER#{$auditData['user_id']}";
+        }
+        return "{$auditData['auditable_type']}#{$auditData['auditable_id']}";
+    }
+
+    protected function getSortKey(array $auditData, string $auditId): string
+    {
+        $timestamp = now()->toISOString();
+        $event = $auditData['event'] ?? 'unknown';
+        return "{$timestamp}#{$event}#{$auditId}";
+    }
+
+    protected function calculateTTL(): ?int
+    {
+        $ttlDays = config('dynamodb-auditing.ttl_days', 730);
+
+        if ($ttlDays === null) {
+            return null;
+        }
+        
+        return now()->addDays($ttlDays)->timestamp;
+    }
+}
