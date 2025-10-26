@@ -16,10 +16,13 @@ class DynamoDbAuditDriver implements AuditDriver
 
     public function __construct()
     {
-        $config = config('dynamodb-auditing.production');
-
         if (app()->environment('local') && config('dynamodb-auditing.local.endpoint')) {
             $config = config('dynamodb-auditing.local');
+        } else {
+            $config = [
+                'region' => config('dynamodb-auditing.region'),
+                'version' => config('dynamodb-auditing.version'),
+            ];
         }
 
         $this->dynamoDb = new DynamoDbClient($config);

@@ -270,7 +270,6 @@ php artisan audit:prevent-migration       # Remove MySQL migrations
 - 📚 **Documentation**: Available in the repository
 - 🐛 **Issues & Bug Reports**: [GitHub Issues](https://github.com/infinitypaul/laravel-dynamodb-auditing/issues)
 - 💬 **Feature Requests**: [GitHub Issues](https://github.com/infinitypaul/laravel-dynamodb-auditing/issues)
-- 📧 **Email Support**: infinitypaul@live.com
 
 ## License
 
