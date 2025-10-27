@@ -36,6 +36,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Queue Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure queue processing for audit logs to improve performance.
+    | When enabled=true, uses Laravel's default queue configuration unless overridden.
+    |
+    */
+    'queue' => [
+        'enabled' => env('DYNAMODB_AUDIT_QUEUE_ENABLED', false),
+        'connection' => env('DYNAMODB_AUDIT_QUEUE_CONNECTION', null), // null = use default queue connection
+        'queue' => env('DYNAMODB_AUDIT_QUEUE_NAME', null), // null = use default queue
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Table Configuration
     |--------------------------------------------------------------------------
     |

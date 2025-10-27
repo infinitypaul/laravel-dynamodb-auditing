@@ -10,6 +10,7 @@ A DynamoDB driver for the [Laravel Auditing](https://github.com/owen-it/laravel-
 -  **Flexible Schema**: NoSQL structure for varying audit data
 -  **Query Service**: Built-in service for querying audit logs
 -  **Laravel Integration**: Seamless integration with Laravel Auditing
+-  **Queue Support**: Optional queue processing for improved performance
 
 ## Installation
 
@@ -36,6 +37,11 @@ AUDIT_DRIVER=dynamodb
 # DynamoDB Configuration
 DYNAMODB_AUDIT_TABLE=your-audit-table-name
 DYNAMODB_AUDIT_TTL_DAYS=730
+
+# Queue Configuration (optional - improves performance)
+DYNAMODB_AUDIT_QUEUE_ENABLED=false
+# DYNAMODB_AUDIT_QUEUE_CONNECTION=redis  # Optional: override default queue connection
+# DYNAMODB_AUDIT_QUEUE_NAME=audits       # Optional: override default queue
 
 # AWS Credentials (production)
 AWS_ACCESS_KEY_ID=your-access-key
@@ -143,6 +149,36 @@ class User extends Model implements Auditable
 }
 ```
 
+### Queue Processing (Recommended for Production)
+
+For high-traffic applications, enable queue processing to improve performance:
+
+```env
+# Enable queue processing (uses your existing Laravel queue configuration)
+DYNAMODB_AUDIT_QUEUE_ENABLED=true
+
+# Optional: Override default queue settings
+# DYNAMODB_AUDIT_QUEUE_CONNECTION=redis  # Use specific queue connection
+# DYNAMODB_AUDIT_QUEUE_NAME=audits       # Use specific queue name
+```
+
+**Benefits of Queue Processing:**
+- **Faster Response Times**: Audit writes don't block user requests
+- **Better Scalability**: Handle high-volume audit operations
+- **Resilience**: Failed audit writes are automatically retried
+- **Non-blocking**: User operations continue even if DynamoDB is temporarily unavailable
+
+**Queue Worker Setup:**
+```bash
+# If using default queue configuration, just run your normal queue workers
+php artisan queue:work
+
+# If using a specific queue name, target that queue
+php artisan queue:work --queue=audits
+```
+
+**Note:** When queue processing is enabled, audit logs are processed asynchronously, so they may not be immediately available for querying.
+
 ### Querying Audit Logs
 
 Use the provided `AuditQueryService`:
@@ -176,6 +212,9 @@ $audit = $auditService->getAuditById('audit_12345');
 | `AUDIT_DRIVER` | Audit driver to use | `database` |
 | `DYNAMODB_AUDIT_TABLE` | DynamoDB table name | `optimus-audit-logs` |
 | `DYNAMODB_AUDIT_TTL_DAYS` | Days before auto-deletion (null = infinite) | `730` |
+| `DYNAMODB_AUDIT_QUEUE_ENABLED` | Enable queue processing for better performance | `false` |
+| `DYNAMODB_AUDIT_QUEUE_CONNECTION` | Queue connection to use (null = use default) | `null` |
+| `DYNAMODB_AUDIT_QUEUE_NAME` | Queue name for audit jobs (null = use default) | `null` |
 | `DYNAMODB_ENDPOINT` | Local DynamoDB endpoint | `null` |
 | `AWS_ACCESS_KEY_ID` | AWS access key | Required for production |
 | `AWS_SECRET_ACCESS_KEY` | AWS secret key | Required for production |

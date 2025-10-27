@@ -8,6 +8,7 @@ use OwenIt\Auditing\Contracts\Audit;
 use OwenIt\Auditing\Contracts\Auditable;
 use OwenIt\Auditing\Contracts\AuditDriver;
 use Illuminate\Support\Facades\Log;
+use InfinityPaul\LaravelDynamoDbAuditing\Jobs\ProcessDynamoDbAudit;
 use Carbon\Carbon;
 
 class DynamoDbAuditDriver implements AuditDriver
@@ -15,6 +16,7 @@ class DynamoDbAuditDriver implements AuditDriver
     protected DynamoDbClient $dynamoDb;
     protected Marshaler $marshaler;
     protected string $tableName;
+    protected array $dynamoDbConfig;
 
     public function __construct()
     {
@@ -36,6 +38,7 @@ class DynamoDbAuditDriver implements AuditDriver
             unset($config['endpoint']);
         }
 
+        $this->dynamoDbConfig = $config;
         $this->dynamoDb = new DynamoDbClient($config);
         $this->marshaler = new Marshaler();
         $this->tableName = config('dynamodb-auditing.table_name');
@@ -74,6 +77,20 @@ class DynamoDbAuditDriver implements AuditDriver
 
             $item = array_filter($item, fn($value) => $value !== null);
 
+            if (config('dynamodb-auditing.queue.enabled', false)) {
+                $job = ProcessDynamoDbAudit::dispatch($item, $this->tableName, $this->dynamoDbConfig);
+                
+                if ($connection = config('dynamodb-auditing.queue.connection')) {
+                    $job->onConnection($connection);
+                }
+
+                if ($queue = config('dynamodb-auditing.queue.queue')) {
+                    $job->onQueue($queue);
+                }
+
+                return null;
+            }
+
             $this->dynamoDb->putItem([
                 'TableName' => $this->tableName,
                 'Item' => $this->marshaler->marshalItem($item),
@@ -87,6 +104,7 @@ class DynamoDbAuditDriver implements AuditDriver
                 'model_class' => get_class($model),
                 'model_id' => $model->getKey(),
                 'table' => $this->tableName,
+                'queue_enabled' => config('dynamodb-auditing.queue.enabled', false),
             ]);
             return null;
         }
