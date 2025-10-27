@@ -93,10 +93,10 @@ class AuditQueryService
 
             $items = collect($result['Items'])->map(function ($item) {
                 return $this->marshaler->unmarshalItem($item);
-            });
+            })->sortByDesc('created_at');
 
             return [
-                'items' => $items->toArray(),
+                'items' => $items->values()->toArray(),
                 'count' => $result['Count'] ?? 0,
                 'scanned_count' => $result['ScannedCount'] ?? 0,
                 'lastEvaluatedKey' => isset($result['LastEvaluatedKey']) ? $this->marshaler->unmarshalItem($result['LastEvaluatedKey']) : null,
