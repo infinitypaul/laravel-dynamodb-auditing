@@ -55,6 +55,7 @@ class DynamoDbAuditDriver implements AuditDriver
                 'PK' => $this->getPartitionKey($auditData),
                 'SK' => $this->getSortKey($auditData, $auditId),
                 'audit_id' => $auditId,
+                'audit_type' => config('dynamodb-auditing.enable_gsi', false) ? 'AUDIT' : null,
                 'user_type' => $auditData['user_type'] ?? null,
                 'user_id' => $auditData['user_id'] ?? null,
                 'event' => $auditData['event'] ?? null,

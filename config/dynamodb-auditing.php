@@ -49,6 +49,10 @@ return [
         'queue' => env('DYNAMODB_AUDIT_QUEUE_NAME', null), // null = use default queue
     ],
 
+    // Enable GSI for immediate audit visibility (requires manual GSI creation)
+    'enable_gsi' => env('DYNAMODB_AUDIT_ENABLE_GSI', false),
+    'gsi_only' => env('DYNAMODB_AUDIT_GSI_ONLY', false),
+
     /*
     |--------------------------------------------------------------------------
     | Table Configuration

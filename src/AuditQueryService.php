@@ -48,6 +48,146 @@ class AuditQueryService
      */
     public function getAllAudits(int $limit = 25, ?array $lastEvaluatedKey = null, array $filters = []): array
     {
+        $useGSI = config('dynamodb-auditing.enable_gsi', false) && $this->hasCreatedAtIndex();
+        
+        if ($useGSI) {
+            $gsiOnly = config('dynamodb-auditing.gsi_only', false);
+            
+            if ($gsiOnly) {
+                return $this->queryWithGSI($limit, $lastEvaluatedKey, $filters);
+            }
+            
+            return $this->getCombinedAudits($limit, $lastEvaluatedKey, $filters);
+        }
+        
+        return $this->scanAudits($limit, $lastEvaluatedKey, $filters);
+    }
+
+    /**
+     * Get combined audit results from both GSI (new records) and scan (old records)
+     */
+    private function getCombinedAudits(int $limit = 25, ?array $lastEvaluatedKey = null, array $filters = []): array
+    {
+        try {
+            $gsiResults = $this->queryWithGSI($limit, null, $filters);
+            $gsiItems = collect($gsiResults['items']);
+            
+            if ($gsiItems->count() >= $limit) {
+                return $gsiResults;
+            }
+            
+            $remainingLimit = $limit - $gsiItems->count();
+            $scanResults = $this->scanAudits($remainingLimit, $lastEvaluatedKey, $filters);
+            $scanItems = collect($scanResults['items']);
+            
+            $gsiAuditIds = $gsiItems->pluck('audit_id')->toArray();
+            $uniqueScanItems = $scanItems->reject(function ($item) use ($gsiAuditIds) {
+                return in_array($item['audit_id'] ?? null, $gsiAuditIds);
+            });
+            
+            $combinedItems = $gsiItems->concat($uniqueScanItems)->sortByDesc(function ($item) {
+                $createdAt = $item['created_at'] ?? null;
+                if (!$createdAt) {
+                    return 0;
+                }
+                try {
+                    return \Carbon\Carbon::parse($createdAt)->timestamp;
+                } catch (\Exception $e) {
+                    return 0;
+                }
+            })->take($limit);
+            
+            return [
+                'items' => $combinedItems->values()->toArray(),
+                'count' => $combinedItems->count(),
+                'scanned_count' => $gsiResults['scanned_count'] + $scanResults['scanned_count'],
+                'lastEvaluatedKey' => $scanResults['lastEvaluatedKey'],
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error('Error in getCombinedAudits, falling back to scan: ' . $e->getMessage());
+            return $this->scanAudits($limit, $lastEvaluatedKey, $filters);
+        }
+    }
+    
+    private function hasCreatedAtIndex(): bool
+    {
+        try {
+            $result = $this->dynamoDb->describeTable(['TableName' => $this->tableName]);
+            $indexes = $result['Table']['GlobalSecondaryIndexes'] ?? [];
+            
+            foreach ($indexes as $index) {
+                if ($index['IndexName'] === 'CreatedAtIndex') {
+                    return $index['IndexStatus'] === 'ACTIVE';
+                }
+            }
+            return false;
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+    
+    private function queryWithGSI(int $limit, ?array $lastEvaluatedKey, array $filters): array
+    {
+        $params = [
+            'TableName' => $this->tableName,
+            'IndexName' => 'CreatedAtIndex',
+            'KeyConditionExpression' => 'audit_type = :audit_type',
+            'ExpressionAttributeValues' => [
+                ':audit_type' => ['S' => 'AUDIT']
+            ],
+            'ScanIndexForward' => false, 
+            'Limit' => $limit,
+        ];
+
+        if ($lastEvaluatedKey) {
+            $params['ExclusiveStartKey'] = $this->marshaler->marshalItem($lastEvaluatedKey);
+        }
+
+        $filterExpressions = [];
+        if (!empty($filters['user_id'])) {
+            $filterExpressions[] = 'user_id = :user_id';
+            $params['ExpressionAttributeValues'][':user_id'] = ['N' => (string) $filters['user_id']];
+        }
+        if (!empty($filters['event'])) {
+            $filterExpressions[] = '#event = :event';
+            $params['ExpressionAttributeNames']['#event'] = 'event';
+            $params['ExpressionAttributeValues'][':event'] = ['S' => $filters['event']];
+        }
+        if (!empty($filters['entity_type'])) {
+            $filterExpressions[] = 'auditable_type = :auditable_type';
+            $params['ExpressionAttributeValues'][':auditable_type'] = ['S' => $filters['entity_type']];
+        }
+        if (!empty($filters['entity_id'])) {
+            $filterExpressions[] = 'auditable_id = :auditable_id';
+            $params['ExpressionAttributeValues'][':auditable_id'] = ['N' => (string) $filters['entity_id']];
+        }
+
+        if (!empty($filterExpressions)) {
+            $params['FilterExpression'] = implode(' AND ', $filterExpressions);
+        }
+
+        try {
+            $result = $this->dynamoDb->query($params);
+
+            $items = collect($result['Items'])->map(function ($item) {
+                return $this->marshaler->unmarshalItem($item);
+            });
+
+            return [
+                'items' => $items->values()->toArray(),
+                'count' => $result['Count'] ?? 0,
+                'scanned_count' => $result['ScannedCount'] ?? 0,
+                'lastEvaluatedKey' => isset($result['LastEvaluatedKey']) ? $this->marshaler->unmarshalItem($result['LastEvaluatedKey']) : null,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Error querying DynamoDB GSI for audits: ' . $e->getMessage(), ['exception' => $e]);
+            return $this->scanAudits($limit, $lastEvaluatedKey, $filters);
+        }
+    }
+    
+    private function scanAudits(int $limit, ?array $lastEvaluatedKey, array $filters): array
+    {
         $params = [
             'TableName' => $this->tableName,
             'Limit' => $limit,
