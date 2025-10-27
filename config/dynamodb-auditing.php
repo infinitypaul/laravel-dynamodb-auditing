@@ -43,5 +43,5 @@ return [
     |
     */
     'table_name' => env('DYNAMODB_AUDIT_TABLE', 'optimus-audit-logs'),
-    'ttl_days' => env('DYNAMODB_AUDIT_TTL_DAYS', 730), // 2 years default, set to null for infinite retention
+    'ttl_days' => env('DYNAMODB_AUDIT_TTL_DAYS', 730), // 2-year default, set to null for infinite retention
 ];
