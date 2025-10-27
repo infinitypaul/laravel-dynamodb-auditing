@@ -17,10 +17,6 @@ class DynamoDbAuditingServiceProvider extends ServiceProvider
             __DIR__.'/../config/dynamodb-auditing.php' => config_path('dynamodb-auditing.php'),
         ], 'dynamodb-auditing-config');
 
-        Auditor::extend('dynamodb', function ($app) {
-            return new DynamoDbAuditDriver();
-        });
-
         if ($this->app->runningInConsole()) {
             $this->commands([
                 InstallDynamoDbAuditing::class,
@@ -37,6 +33,17 @@ class DynamoDbAuditingServiceProvider extends ServiceProvider
             __DIR__.'/../config/dynamodb-auditing.php',
             'dynamodb-auditing'
         );
+
+    
+        $this->app->singleton(\OwenIt\Auditing\Contracts\Auditor::class, function ($app) {
+            $auditor = new \OwenIt\Auditing\Auditor($app);
+            
+            $auditor->extend('dynamodb', function ($app) {
+                return new DynamoDbAuditDriver();
+            });
+            
+            return $auditor;
+        });
 
         $this->app->singleton(AuditQueryService::class, function ($app) {
             return new AuditQueryService();
