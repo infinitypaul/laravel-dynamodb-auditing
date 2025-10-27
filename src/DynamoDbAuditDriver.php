@@ -24,8 +24,12 @@ class DynamoDbAuditDriver implements AuditDriver
             $config = [
                 'region' => config('dynamodb-auditing.region'),
                 'version' => config('dynamodb-auditing.version'),
-                'credentials' => config('dynamodb-auditing.credentials'),
             ];
+            
+            $credentials = config('dynamodb-auditing.credentials');
+            if (!empty($credentials['key']) && !empty($credentials['secret'])) {
+                $config['credentials'] = $credentials;
+            }
         }
 
         if (empty($config['endpoint'])) {
