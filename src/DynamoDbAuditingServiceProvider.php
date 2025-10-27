@@ -11,11 +11,33 @@ use InfinityPaul\LaravelDynamoDbAuditing\Console\Commands\InstallDynamoDbAuditin
 
 class DynamoDbAuditingServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        $this->mergeConfigFrom(
+            __DIR__.'/../config/dynamodb-auditing.php',
+            'dynamodb-auditing'
+        );
+
+        $this->app->singleton(AuditQueryService::class, function ($app) {
+            return new AuditQueryService();
+        });
+    }
+    
     public function boot(): void
     {
         $this->publishes([
             __DIR__.'/../config/dynamodb-auditing.php' => config_path('dynamodb-auditing.php'),
         ], 'dynamodb-auditing-config');
+
+        $this->app->singleton(\OwenIt\Auditing\Contracts\Auditor::class, function ($app) {
+            $auditor = new CustomAuditor($app);
+            
+            $auditor->extend('dynamodb', function ($app) {
+                return new DynamoDbAuditDriver();
+            });
+            
+            return $auditor;
+        });
 
         if ($this->app->runningInConsole()) {
             $this->commands([
@@ -25,28 +47,5 @@ class DynamoDbAuditingServiceProvider extends ServiceProvider
                 PreventAuditMigration::class,
             ]);
         }
-    }
-
-    public function register(): void
-    {
-        $this->mergeConfigFrom(
-            __DIR__.'/../config/dynamodb-auditing.php',
-            'dynamodb-auditing'
-        );
-
-    
-        $this->app->singleton(\OwenIt\Auditing\Contracts\Auditor::class, function ($app) {
-            $auditor = new \OwenIt\Auditing\Auditor($app);
-            
-            $auditor->extend('dynamodb', function ($app) {
-                return new DynamoDbAuditDriver();
-            });
-            
-            return $auditor;
-        });
-
-        $this->app->singleton(AuditQueryService::class, function ($app) {
-            return new AuditQueryService();
-        });
     }
 }
