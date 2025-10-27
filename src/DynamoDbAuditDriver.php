@@ -7,6 +7,8 @@ use Aws\DynamoDb\Marshaler;
 use OwenIt\Auditing\Contracts\Audit;
 use OwenIt\Auditing\Contracts\Auditable;
 use OwenIt\Auditing\Contracts\AuditDriver;
+use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class DynamoDbAuditDriver implements AuditDriver
 {
@@ -16,13 +18,18 @@ class DynamoDbAuditDriver implements AuditDriver
 
     public function __construct()
     {
-        if (app()->environment('local') && config('dynamodb-auditing.local.endpoint')) {
+        if (app()->environment('local') && env('DYNAMODB_ENDPOINT') !== null) {
             $config = config('dynamodb-auditing.local');
         } else {
             $config = [
                 'region' => config('dynamodb-auditing.region'),
                 'version' => config('dynamodb-auditing.version'),
+                'credentials' => config('dynamodb-auditing.credentials'),
             ];
+        }
+
+        if (empty($config['endpoint'])) {
+            unset($config['endpoint']);
         }
 
         $this->dynamoDb = new DynamoDbClient($config);
@@ -71,6 +78,12 @@ class DynamoDbAuditDriver implements AuditDriver
             return null;
 
         } catch (\Exception $e) {
+            Log::error('Failed to write audit to DynamoDB', [
+                'error' => $e->getMessage(),
+                'model_class' => get_class($model),
+                'model_id' => $model->getKey(),
+                'table' => $this->tableName,
+            ]);
             return null;
         }
     }

@@ -14,10 +14,14 @@ class AuditQueryService
 
     public function __construct()
     {
-        $config = config('dynamodb-auditing.production');
-
-        if (app()->environment('local') && config('dynamodb-auditing.local.endpoint')) {
+        if (app()->environment('local') && env('DYNAMODB_ENDPOINT') !== null) {
             $config = config('dynamodb-auditing.local');
+        } else {
+            $config = [
+                'region' => config('dynamodb-auditing.region'),
+                'version' => config('dynamodb-auditing.version'),
+                'credentials' => config('dynamodb-auditing.credentials'),
+            ];
         }
 
         if (empty($config['endpoint'])) {
@@ -43,7 +47,6 @@ class AuditQueryService
         $params = [
             'TableName' => $this->tableName,
             'Limit' => $limit,
-            'ScanIndexForward' => false,
         ];
 
         if ($lastEvaluatedKey) {
