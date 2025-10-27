@@ -93,10 +93,24 @@ class AuditQueryService
 
             $items = collect($result['Items'])->map(function ($item) {
                 return $this->marshaler->unmarshalItem($item);
-            })->sortByDesc('created_at');
+            });
+
+           
+            $sortedItems = $items->sortByDesc(function ($item) {
+                $createdAt = $item['created_at'] ?? null;
+                if (!$createdAt) {
+                    return 0; 
+                }
+                
+                try {
+                    return \Carbon\Carbon::parse($createdAt)->timestamp;
+                } catch (\Exception $e) {
+                    return 0;
+                }
+            });
 
             return [
-                'items' => $items->values()->toArray(),
+                'items' => $sortedItems->values()->toArray(),
                 'count' => $result['Count'] ?? 0,
                 'scanned_count' => $result['ScannedCount'] ?? 0,
                 'lastEvaluatedKey' => isset($result['LastEvaluatedKey']) ? $this->marshaler->unmarshalItem($result['LastEvaluatedKey']) : null,
