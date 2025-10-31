@@ -9,7 +9,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class ProcessDynamoDbAudit implements ShouldQueue
 {
@@ -36,25 +35,13 @@ class ProcessDynamoDbAudit implements ShouldQueue
                 'Item' => $marshaler->marshalItem($this->auditData),
             ]);
         } catch (\Exception $e) {
-            Log::error('Failed to process DynamoDB audit in queue', [
-                'error' => $e->getMessage(),
-                'audit_data' => $this->auditData,
-                'table' => $this->tableName,
-                'attempt' => $this->attempts(),
-            ]);
-
             throw $e;
         }
     }
 
     public function failed(\Throwable $exception): void
     {
-        Log::error('DynamoDB audit job failed permanently', [
-            'error' => $exception->getMessage(),
-            'audit_data' => $this->auditData,
-            'table' => $this->tableName,
-            'attempts' => $this->attempts(),
-        ]);
+        // Job failed permanently after all retries
     }
 
     public function retryUntil(): \DateTime

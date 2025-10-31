@@ -25,7 +25,7 @@ php artisan audit:install-dynamodb --local
 php artisan audit:install-dynamodb --local --force
 ```
 
-**That's it!** The installer handles everything: migration conflicts, configuration, table creation, and testing.
+**That's it!** The installer handles everything: migration conflicts, configuration, table creation with GSI, and testing.
 
 ---
 
@@ -82,7 +82,24 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 AWS_DEFAULT_REGION=us-east-1
 ```
 
-### 5. Setup DynamoDB
+### 5. Configure Laravel Auditing Driver
+
+Add the DynamoDB driver configuration to your `config/audit.php` file in the `drivers` array:
+
+```php
+'drivers' => [
+    'database' => [
+        'table' => 'audits',
+        'connection' => null,
+    ],
+    'dynamodb' => [
+        'table' => env('DYNAMODB_AUDIT_TABLE', 'optimus-audit-logs'),
+        'region' => env('DYNAMODB_REGION', env('AWS_DEFAULT_REGION', 'us-east-1')),
+    ],
+],
+```
+
+### 6. Setup DynamoDB
 
 #### Local Development:
 
@@ -91,7 +108,7 @@ First, start DynamoDB Local:
 docker run -p 8000:8000 amazon/dynamodb-local:latest
 ```
 
-Then create the table:
+Then create the table with GSI:
 ```bash
 php artisan audit:setup-dynamodb --local
 ```
@@ -102,7 +119,7 @@ php artisan audit:setup-dynamodb --local
 php artisan audit:setup-dynamodb
 ```
 
-### 6. Configure Your Models
+### 7. Configure Your Models
 
 Update your models to use auditing:
 
@@ -135,7 +152,7 @@ class User extends Model implements Auditable
 }
 ```
 
-### 7. Test the Setup
+### 8. Test the Setup
 
 ```bash
 php artisan audit:test-dynamodb

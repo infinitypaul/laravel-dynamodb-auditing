@@ -7,7 +7,6 @@ use Aws\DynamoDb\Marshaler;
 use OwenIt\Auditing\Contracts\Audit;
 use OwenIt\Auditing\Contracts\Auditable;
 use OwenIt\Auditing\Contracts\AuditDriver;
-use Illuminate\Support\Facades\Log;
 use InfinityPaul\LaravelDynamoDbAuditing\Jobs\ProcessDynamoDbAudit;
 use Carbon\Carbon;
 
@@ -100,13 +99,6 @@ class DynamoDbAuditDriver implements AuditDriver
             return null;
 
         } catch (\Exception $e) {
-            Log::error('Failed to write audit to DynamoDB', [
-                'error' => $e->getMessage(),
-                'model_class' => get_class($model),
-                'model_id' => $model->getKey(),
-                'table' => $this->tableName,
-                'queue_enabled' => config('dynamodb-auditing.queue.enabled', false),
-            ]);
             return null;
         }
     }

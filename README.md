@@ -54,21 +54,45 @@ DYNAMODB_ACCESS_KEY_ID=dummy
 DYNAMODB_SECRET_ACCESS_KEY=dummy
 ```
 
-### 4. Update Audit Configuration
+### 4. Configure Laravel Auditing Driver
 
-In your `config/audit.php`, set the driver:
+Add the DynamoDB driver configuration to your `config/audit.php` file in the `drivers` array:
 
 ```php
-'driver' => env('AUDIT_DRIVER', 'dynamodb'),
+'drivers' => [
+    'database' => [
+        'table' => 'audits',
+        'connection' => null,
+    ],
+    'dynamodb' => [
+        'table' => env('DYNAMODB_AUDIT_TABLE', 'optimus-audit-logs'),
+        'region' => env('DYNAMODB_REGION', env('AWS_DEFAULT_REGION', 'us-east-1')),
+    ],
+],
+```
+
+### 5. Create DynamoDB Table
+
+```bash
+# For local development
+php artisan audit:setup-dynamodb --local
+
+# For production
+php artisan audit:setup-dynamodb
 ```
 
 ## DynamoDB Table Structure
 
 The package uses the following DynamoDB table structure:
 
-### Primary Key
-- **Partition Key (PK)**: `USER#{user_id}` or `{auditable_type}#{auditable_id}`
-- **Sort Key (SK)**: `{timestamp}#{event}#{audit_id}`
+### Primary Key Design
+- **Partition Key (PK)**: `{auditable_type}#{auditable_id}` (e.g., `App\Models\Wallet#12345`)
+- **Sort Key (SK)**: `{timestamp}#{audit_id}` (for chronological ordering)
+
+### Global Secondary Index (GSI)
+- **CreatedAtIndex**: For recent audit browsing
+- **Partition Key**: `audit_type` (always "AUDIT")
+- **Sort Key**: `created_at` (timestamp)
 
 ### Attributes
 - `audit_id` - Unique identifier for the audit
@@ -86,9 +110,7 @@ The package uses the following DynamoDB table structure:
 
 ## Setup
 
-### 🚀 Quick Setup (Recommended)
-
-**One command does everything:**
+### Quick Setup (Recommended)
 
 ```bash
 # Interactive installer - handles complete setup
@@ -104,7 +126,7 @@ php artisan audit:install-dynamodb --local --force
 The installer automatically:
 - ✅ Checks for migration conflicts
 - ✅ Publishes configuration
-- ✅ Creates DynamoDB table  
+- ✅ Creates DynamoDB table with GSI
 - ✅ Tests the installation
 - ✅ Provides next steps
 
@@ -193,14 +215,13 @@ $result = $auditService->getAllAudits(
     limit: 25,
     lastEvaluatedKey: null,
     filters: [
-        'user_id' => 123,
-        'event' => 'updated',
-        'entity_type' => 'App\\Models\\User'
+        'entity_type' => 'App\\Models\\Wallet',  // Required for fast search
+        'entity_id' => '12345',                  // Required for fast search
+        'start_date' => '2024-01-01T00:00:00',  // Optional date filtering
+        'end_date' => '2024-12-31T23:59:59',    // Optional date filtering
     ]
 );
 
-// Get specific audit by ID
-$audit = $auditService->getAuditById('audit_12345');
 ```
 
 ## Configuration
@@ -282,7 +303,7 @@ The package provides several Artisan commands for setup and testing:
 | Command | Description | Options |
 |---------|-------------|---------|
 | `audit:install-dynamodb` | **🚀 Interactive installer - complete setup** | `--local`, `--production`, `--force` |
-| `audit:setup-dynamodb` | Create DynamoDB table for audit logs | `--local`, `--force` |
+| `audit:setup-dynamodb` | Create DynamoDB table with GSI for audit logs | `--local`, `--force` |
 | `audit:test-dynamodb` | Test DynamoDB audit functionality | `--model`, `--id` |
 | `audit:prevent-migration` | Remove conflicting MySQL audit migrations | `--check` |
 

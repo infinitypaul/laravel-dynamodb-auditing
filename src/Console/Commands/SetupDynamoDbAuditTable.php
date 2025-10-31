@@ -151,7 +151,7 @@ class SetupDynamoDbAuditTable extends Command
      */
     private function createTable(DynamoDbClient $dynamoDb, string $tableName, bool $isLocal): void
     {
-        $this->info("🔨 Creating table '{$tableName}'...");
+        $this->info("🔨 Creating table '{$tableName}' with GSI for recent browsing...");
 
         $tableConfig = [
             'TableName' => $tableName,
@@ -163,6 +163,14 @@ class SetupDynamoDbAuditTable extends Command
                 [
                     'AttributeName' => 'SK',
                     'AttributeType' => 'S'
+                ],
+                [
+                    'AttributeName' => 'audit_type',
+                    'AttributeType' => 'S'
+                ],
+                [
+                    'AttributeName' => 'created_at',
+                    'AttributeType' => 'S'
                 ]
             ],
             'KeySchema' => [
@@ -173,6 +181,24 @@ class SetupDynamoDbAuditTable extends Command
                 [
                     'AttributeName' => 'SK',
                     'KeyType' => 'RANGE'
+                ]
+            ],
+            'GlobalSecondaryIndexes' => [
+                [
+                    'IndexName' => 'CreatedAtIndex',
+                    'KeySchema' => [
+                        [
+                            'AttributeName' => 'audit_type',
+                            'KeyType' => 'HASH'
+                        ],
+                        [
+                            'AttributeName' => 'created_at',
+                            'KeyType' => 'RANGE'
+                        ]
+                    ],
+                    'Projection' => [
+                        'ProjectionType' => 'ALL'
+                    ]
                 ]
             ],
             'BillingMode' => 'PAY_PER_REQUEST'

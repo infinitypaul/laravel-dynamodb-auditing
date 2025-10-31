@@ -4,7 +4,6 @@ namespace InfinityPaul\LaravelDynamoDbAuditing;
 
 use Aws\DynamoDb\DynamoDbClient;
 use Aws\DynamoDb\Marshaler;
-use Illuminate\Support\Facades\Log;
 
 class AuditQueryService
 {
@@ -37,134 +36,67 @@ class AuditQueryService
         $this->tableName = config('dynamodb-auditing.table_name');
     }
 
-
     public function getTableName(): string
     {
         return $this->tableName;
     }
 
     /**
-     * Get all audit logs with pagination and optional filters
+     * Get audit logs with support for entity-specific and recent browsing
+     * 
+     * @param int $limit Maximum number of records to return
+     * @param array|null $lastEvaluatedKey For pagination
+     * @param array $filters Optional filters for searching
+     * @return array
      */
     public function getAllAudits(int $limit = 25, ?array $lastEvaluatedKey = null, array $filters = []): array
     {
-        $useGSI = config('dynamodb-auditing.enable_gsi', false) && $this->hasCreatedAtIndex();
-        
-        if ($useGSI) {
-            $gsiOnly = config('dynamodb-auditing.gsi_only', false);
-            
-            if ($gsiOnly) {
-                return $this->queryWithGSI($limit, $lastEvaluatedKey, $filters);
-            }
-            
-            return $this->getCombinedAudits($limit, $lastEvaluatedKey, $filters);
+        if (!empty($filters['entity_id']) && !empty($filters['entity_type'])) {
+            return $this->queryByPrimaryKey($filters['entity_id'], $limit, $filters['entity_type'], $filters);
         }
         
-        return $this->scanAudits($limit, $lastEvaluatedKey, $filters);
+        if (empty($filters) || empty($filters['entity_id'])) {
+            return $this->getRecentAudits($limit, $lastEvaluatedKey, $filters);
+        }
+        
+        return [
+            'items' => [],
+            'count' => 0,
+            'scanned_count' => 0,
+            'lastEvaluatedKey' => null,
+            'message' => 'For fast search, please provide both entity_id and entity_type'
+        ];
     }
 
     /**
-     * Get combined audit results from both GSI (new records) and scan (old records)
+     * Get recent audit logs using GSI for default page load
+     * 
+     * @param int $limit Maximum number of records to return
+     * @param array|null $lastEvaluatedKey For pagination
+     * @param array $filters Optional filters
+     * @return array
      */
-    private function getCombinedAudits(int $limit = 25, ?array $lastEvaluatedKey = null, array $filters = []): array
+    private function getRecentAudits(int $limit = 25, ?array $lastEvaluatedKey = null, array $filters = []): array
     {
-        try {
-            $gsiResults = $this->queryWithGSI($limit, null, $filters);
-            $gsiItems = collect($gsiResults['items']);
-            
-            if ($gsiItems->count() >= $limit) {
-                return $gsiResults;
-            }
-            
-            $remainingLimit = $limit - $gsiItems->count();
-            $scanResults = $this->scanAudits($remainingLimit, $lastEvaluatedKey, $filters);
-            $scanItems = collect($scanResults['items']);
-            
-            $gsiAuditIds = $gsiItems->pluck('audit_id')->toArray();
-            $uniqueScanItems = $scanItems->reject(function ($item) use ($gsiAuditIds) {
-                return in_array($item['audit_id'] ?? null, $gsiAuditIds);
-            });
-            
-            $combinedItems = $gsiItems->concat($uniqueScanItems)->sortByDesc(function ($item) {
-                $createdAt = $item['created_at'] ?? null;
-                if (!$createdAt) {
-                    return 0;
-                }
-                try {
-                    return \Carbon\Carbon::parse($createdAt)->timestamp;
-                } catch (\Exception $e) {
-                    return 0;
-                }
-            })->take($limit);
-            
-            return [
-                'items' => $combinedItems->values()->toArray(),
-                'count' => $combinedItems->count(),
-                'scanned_count' => $gsiResults['scanned_count'] + $scanResults['scanned_count'],
-                'lastEvaluatedKey' => $scanResults['lastEvaluatedKey'],
-            ];
-            
-        } catch (\Exception $e) {
-            Log::error('Error in getCombinedAudits, falling back to scan: ' . $e->getMessage());
-            return $this->scanAudits($limit, $lastEvaluatedKey, $filters);
-        }
-    }
-    
-    private function hasCreatedAtIndex(): bool
-    {
-        try {
-            $result = $this->dynamoDb->describeTable(['TableName' => $this->tableName]);
-            $indexes = $result['Table']['GlobalSecondaryIndexes'] ?? [];
-            
-            foreach ($indexes as $index) {
-                if ($index['IndexName'] === 'CreatedAtIndex') {
-                    return $index['IndexStatus'] === 'ACTIVE';
-                }
-            }
-            return false;
-        } catch (\Exception $e) {
-            return false;
-        }
-    }
-    
-    private function queryWithGSI(int $limit, ?array $lastEvaluatedKey, array $filters): array
-    {
+        $endDate = now()->addHour()->toISOString();
+        $startDate = now()->startOfDay()->toISOString();
+        
+        
         $params = [
             'TableName' => $this->tableName,
             'IndexName' => 'CreatedAtIndex',
-            'KeyConditionExpression' => 'audit_type = :audit_type',
+            'KeyConditionExpression' => 'audit_type = :audit_type AND created_at BETWEEN :start_date AND :end_date',
             'ExpressionAttributeValues' => [
-                ':audit_type' => ['S' => 'AUDIT']
+                ':audit_type' => ['S' => 'AUDIT'],
+                ':start_date' => ['S' => $startDate],
+                ':end_date' => ['S' => $endDate]
             ],
-            'ScanIndexForward' => false, 
+            'ScanIndexForward' => false,
             'Limit' => $limit,
         ];
 
         if ($lastEvaluatedKey) {
             $params['ExclusiveStartKey'] = $this->marshaler->marshalItem($lastEvaluatedKey);
-        }
-
-        $filterExpressions = [];
-        if (!empty($filters['user_id'])) {
-            $filterExpressions[] = 'user_id = :user_id';
-            $params['ExpressionAttributeValues'][':user_id'] = ['N' => (string) $filters['user_id']];
-        }
-        if (!empty($filters['event'])) {
-            $filterExpressions[] = '#event = :event';
-            $params['ExpressionAttributeNames']['#event'] = 'event';
-            $params['ExpressionAttributeValues'][':event'] = ['S' => $filters['event']];
-        }
-        if (!empty($filters['entity_type'])) {
-            $filterExpressions[] = 'auditable_type = :auditable_type';
-            $params['ExpressionAttributeValues'][':auditable_type'] = ['S' => $filters['entity_type']];
-        }
-        if (!empty($filters['entity_id'])) {
-            $filterExpressions[] = 'auditable_id = :auditable_id';
-            $params['ExpressionAttributeValues'][':auditable_id'] = ['N' => (string) $filters['entity_id']];
-        }
-
-        if (!empty($filterExpressions)) {
-            $params['FilterExpression'] = implode(' AND ', $filterExpressions);
         }
 
         try {
@@ -181,131 +113,120 @@ class AuditQueryService
                 'lastEvaluatedKey' => isset($result['LastEvaluatedKey']) ? $this->marshaler->unmarshalItem($result['LastEvaluatedKey']) : null,
             ];
         } catch (\Exception $e) {
-            Log::error('Error querying DynamoDB GSI for audits: ' . $e->getMessage(), ['exception' => $e]);
-            return $this->scanAudits($limit, $lastEvaluatedKey, $filters);
-        }
-    }
-    
-    private function scanAudits(int $limit, ?array $lastEvaluatedKey, array $filters): array
-    {
-        $params = [
-            'TableName' => $this->tableName,
-            'Limit' => $limit,
-        ];
-
-        if ($lastEvaluatedKey) {
-            $params['ExclusiveStartKey'] = $this->marshaler->marshalItem($lastEvaluatedKey);
-        }
-
-
-        $filterExpressions = [];
-        $expressionAttributeValues = [];
-        $expressionAttributeNames = [];
-
-        if (!empty($filters['user_id'])) {
-            $filterExpressions[] = 'user_id = :user_id';
-            $expressionAttributeValues[':user_id'] = ['N' => (string) $filters['user_id']];
-        }
-        if (!empty($filters['event'])) {
-            $filterExpressions[] = '#event = :event';
-            $expressionAttributeNames['#event'] = 'event';
-            $expressionAttributeValues[':event'] = ['S' => $filters['event']];
-        }
-        if (!empty($filters['entity_type'])) {
-            $filterExpressions[] = 'auditable_type = :auditable_type';
-            $expressionAttributeValues[':auditable_type'] = ['S' => $filters['entity_type']];
-        }
-        if (!empty($filters['entity_id'])) {
-            $filterExpressions[] = 'auditable_id = :auditable_id';
-            $expressionAttributeValues[':auditable_id'] = ['N' => (string) $filters['entity_id']];
-        }
-
-        if (!empty($filterExpressions)) {
-            $params['FilterExpression'] = implode(' AND ', $filterExpressions);
-            $params['ExpressionAttributeValues'] = $expressionAttributeValues;
-            if (!empty($expressionAttributeNames)) {
-                $params['ExpressionAttributeNames'] = $expressionAttributeNames;
-            }
-        }
-
-        try {
-            $result = $this->dynamoDb->scan($params);
-
-            $items = collect($result['Items'])->map(function ($item) {
-                return $this->marshaler->unmarshalItem($item);
-            });
-
-           
-            $sortedItems = $items->sortByDesc(function ($item) {
-                $createdAt = $item['created_at'] ?? null;
-                if (!$createdAt) {
-                    return 0; 
-                }
-                
-                try {
-                    return \Carbon\Carbon::parse($createdAt)->timestamp;
-                } catch (\Exception $e) {
-                    return 0;
-                }
-            });
-
-            return [
-                'items' => $sortedItems->values()->toArray(),
-                'count' => $result['Count'] ?? 0,
-                'scanned_count' => $result['ScannedCount'] ?? 0,
-                'lastEvaluatedKey' => isset($result['LastEvaluatedKey']) ? $this->marshaler->unmarshalItem($result['LastEvaluatedKey']) : null,
-            ];
-        } catch (\Exception $e) {
-            Log::error('Error scanning DynamoDB for audits: ' . $e->getMessage(), ['exception' => $e]);
             return [
                 'items' => [],
                 'count' => 0,
                 'scanned_count' => 0,
                 'lastEvaluatedKey' => null,
+                'error' => 'Failed to load recent audits'
             ];
         }
     }
 
-
-    public function getAuditById(string $auditId): ?array
+    /**
+     * Execute Primary Key query for fast entity-specific lookups
+     * 
+     * @param string $entityId The entity ID to search for
+     * @param int $limit Maximum number of records to return
+     * @param string $entityType The entity type (e.g., App\Models\Wallet)
+     * @param array $filters Additional filters including date range
+     * @return array
+     */
+    private function queryByPrimaryKey(string $entityId, int $limit, string $entityType, array $filters = []): array
     {
-        $params = [
-            'TableName' => $this->tableName,
-            'FilterExpression' => 'audit_id = :audit_id',
-            'ExpressionAttributeValues' => [
-                ':audit_id' => ['S' => $auditId],
-            ],
-        ];
-
-        try {
-            $result = $this->dynamoDb->scan($params);
-
-            if (!empty($result['Items'][0])) {
-                return $this->marshaler->unmarshalItem($result['Items'][0]);
-            }
-            return null;
-        } catch (\Exception $e) {
-            Log::error('Error fetching audit by ID from DynamoDB: ' . $e->getMessage(), ['exception' => $e]);
-            return null;
+        $pk = "{$entityType}#{$entityId}";
+        $hasDateFilter = !empty($filters['start_date']) || !empty($filters['end_date']);
+        $queryLimit = $hasDateFilter ? min($limit * 3, 1000) : $limit;
+        
+        $result = $this->executePKQuery($pk, $queryLimit);
+        
+        if ($hasDateFilter && !empty($result['items'])) {
+            $result['items'] = $this->filterByDateRange($result['items'], $filters);
+            $result['items'] = array_slice($result['items'], 0, $limit);
+            $result['count'] = count($result['items']);
         }
-    }
-    
-    public function getAuditStats(): array
-    {
-        // TODO: Implement statistics gathering
-        return [
-            'total_audits' => 0,
-            'events_breakdown' => [],
-        ];
+        
+        return $result;
     }
 
     /**
-     * Unmarshall DynamoDB items
+     * Filter audit records by date range
+     *
+     * @param array $items The audit records to filter
+     * @param array $filters The filters containing start_date and/or end_date
+     * @return array Filtered audit records
+     * @throws \Exception
      */
-    protected function unmarshallItems(array $items): array
+    private function filterByDateRange(array $items, array $filters): array
     {
-        return array_map(function ($item) {
-            return $this->marshaler->unmarshalItem($item);
-        }, $items);
+        $startDate = !empty($filters['start_date']) ? new \DateTime($filters['start_date']) : null;
+        $endDate = !empty($filters['end_date']) ? new \DateTime($filters['end_date']) : null;
+        
+        return array_filter($items, function ($item) use ($startDate, $endDate) {
+            if (empty($item['created_at'])) {
+                return true;
+            }
+            
+            try {
+                $itemDate = new \DateTime($item['created_at']);
+                
+                if ($startDate && $itemDate < $startDate) {
+                    return false;
+                }
+                
+                if ($endDate && $itemDate > $endDate) {
+                    return false;
+                }
+                
+                return true;
+            } catch (\Exception $e) {
+                return true;
+            }
+        });
     }
+
+    /**
+     * Execute the actual DynamoDB Primary Key query
+     * 
+     * @param string $pk The primary key to query
+     * @param int $limit Maximum number of records to return
+     * @return array
+     */
+    private function executePKQuery(string $pk, int $limit): array
+    {
+        $params = [
+            'TableName' => $this->tableName,
+            'KeyConditionExpression' => 'PK = :pk',
+            'ExpressionAttributeValues' => [
+                ':pk' => ['S' => $pk]
+            ],
+            'ScanIndexForward' => false,
+            'Limit' => $limit,
+        ];
+        
+        try {
+            $result = $this->dynamoDb->query($params);
+            
+
+            $items = collect($result['Items'])->map(function ($item) {
+                return $this->marshaler->unmarshalItem($item);
+            });
+
+            return [
+                'items' => $items->values()->toArray(),
+                'count' => $result['Count'] ?? 0,
+                'scanned_count' => $result['ScannedCount'] ?? 0,
+                'lastEvaluatedKey' => isset($result['LastEvaluatedKey']) ? $this->marshaler->unmarshalItem($result['LastEvaluatedKey']) : null,
+            ];
+        } catch (\Exception $e) {
+            return [
+                'items' => [],
+                'count' => 0,
+                'scanned_count' => 0,
+                'lastEvaluatedKey' => null,
+                'error' => 'Query failed: ' . $e->getMessage()
+            ];
+        }
+    }
+
 }

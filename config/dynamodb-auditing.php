@@ -39,28 +39,36 @@ return [
     | Queue Configuration
     |--------------------------------------------------------------------------
     |
-    | Configure queue processing for audit logs to improve performance.
-    | When enabled=true, uses Laravel's default queue configuration unless overridden.
+    | Enable queue processing for better performance in high-traffic applications.
+    | Audit writes become non-blocking and are processed asynchronously.
     |
     */
     'queue' => [
         'enabled' => env('DYNAMODB_AUDIT_QUEUE_ENABLED', false),
-        'connection' => env('DYNAMODB_AUDIT_QUEUE_CONNECTION', null), // null = use default queue connection
-        'queue' => env('DYNAMODB_AUDIT_QUEUE_NAME', null), // null = use default queue
+        'connection' => env('DYNAMODB_AUDIT_QUEUE_CONNECTION', null), // null = use default
+        'queue' => env('DYNAMODB_AUDIT_QUEUE_NAME', null), // null = use default
     ],
 
-    // Enable GSI for immediate audit visibility (requires manual GSI creation)
-    'enable_gsi' => env('DYNAMODB_AUDIT_ENABLE_GSI', false),
-    'gsi_only' => env('DYNAMODB_AUDIT_GSI_ONLY', false),
+    /*
+    |--------------------------------------------------------------------------
+    | Performance Configuration
+    |--------------------------------------------------------------------------
+    |
+    | The package uses two optimized query patterns:
+    | 1. Primary Key queries for entity-specific lookups (fastest)
+    | 2. GSI queries for recent audit browsing (dashboard views)
+    |
+    */
 
     /*
     |--------------------------------------------------------------------------
     | Table Configuration
     |--------------------------------------------------------------------------
     |
-    | DynamoDB table name and TTL settings
+    | DynamoDB table name and automatic cleanup settings.
+    | TTL (Time-To-Live) automatically deletes old audit logs to control costs.
     |
     */
     'table_name' => env('DYNAMODB_AUDIT_TABLE', 'optimus-audit-logs'),
-    'ttl_days' => env('DYNAMODB_AUDIT_TTL_DAYS', 730), // 2-year default, set to null for infinite retention
+    'ttl_days' => env('DYNAMODB_AUDIT_TTL_DAYS', 730), // Auto-delete after 2 years (null = never delete)
 ];

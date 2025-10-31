@@ -8,7 +8,6 @@ use InfinityPaul\LaravelDynamoDbAuditing\Console\Commands\SetupDynamoDbAuditTabl
 use InfinityPaul\LaravelDynamoDbAuditing\Console\Commands\TestDynamoDbAudit;
 use InfinityPaul\LaravelDynamoDbAuditing\Console\Commands\PreventAuditMigration;
 use InfinityPaul\LaravelDynamoDbAuditing\Console\Commands\InstallDynamoDbAuditing;
-use \InfinityPaul\LaravelDynamoDbAuditing\Console\Commands\CreateAuditDateIndex;
 
 class DynamoDbAuditingServiceProvider extends ServiceProvider
 {
@@ -46,7 +45,6 @@ class DynamoDbAuditingServiceProvider extends ServiceProvider
                 SetupDynamoDbAuditTable::class,
                 TestDynamoDbAudit::class,
                 PreventAuditMigration::class,
-                CreateAuditDateIndex::class,
             ]);
         }
     }
