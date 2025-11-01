@@ -9,7 +9,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class ProcessDynamoDbAudit implements ShouldQueue
 {
@@ -28,14 +27,6 @@ class ProcessDynamoDbAudit implements ShouldQueue
     public function handle(): void
     {
         try {
-            Log::info('ProcessDynamoDbAudit Job - Starting', [
-                'audit_id' => $this->auditData['audit_id'] ?? 'unknown',
-                'table_name' => $this->tableName,
-                'model_type' => $this->auditData['auditable_type'] ?? 'unknown',
-                'model_id' => $this->auditData['auditable_id'] ?? 'unknown',
-                'event' => $this->auditData['event'] ?? 'unknown',
-                'job_id' => $this->job->getJobId(),
-            ]);
 
             $dynamoDb = new DynamoDbClient($this->dynamoDbConfig);
             $marshaler = new Marshaler();
@@ -45,18 +36,8 @@ class ProcessDynamoDbAudit implements ShouldQueue
                 'Item' => $marshaler->marshalItem($this->auditData),
             ]);
 
-            Log::info('ProcessDynamoDbAudit Job - Successfully completed', [
-                'audit_id' => $this->auditData['audit_id'] ?? 'unknown',
-                'job_id' => $this->job->getJobId(),
-            ]);
         } catch (\Exception $e) {
-            Log::error('ProcessDynamoDbAudit Job - Failed', [
-                'audit_id' => $this->auditData['audit_id'] ?? 'unknown',
-                'table_name' => $this->tableName,
-                'error' => $e->getMessage(),
-                'job_id' => $this->job->getJobId(),
-                'attempt' => $this->attempts(),
-            ]);
+            // Re-throw to trigger retry mechanism
             
             throw $e;
         }
@@ -64,15 +45,7 @@ class ProcessDynamoDbAudit implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::error('ProcessDynamoDbAudit Job - Failed permanently', [
-            'audit_id' => $this->auditData['audit_id'] ?? 'unknown',
-            'table_name' => $this->tableName,
-            'model_type' => $this->auditData['auditable_type'] ?? 'unknown',
-            'model_id' => $this->auditData['auditable_id'] ?? 'unknown',
-            'error' => $exception->getMessage(),
-            'trace' => $exception->getTraceAsString(),
-            'attempts' => $this->attempts(),
-        ]);
+        // Silently fail - audit failures should not break the application
     }
 
     public function retryUntil(): \DateTime
