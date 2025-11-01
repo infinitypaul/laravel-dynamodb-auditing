@@ -78,8 +78,10 @@ class AuditQueryService
      */
     private function getRecentAudits(int $limit = 25, ?array $lastEvaluatedKey = null, array $filters = []): array
     {
+        $recentDays = $filters['recent_days'] ?? config('dynamodb-auditing.recent_audits_days', 1);
         $endDate = now()->addHour()->toISOString();
-        $startDate = now()->startOfDay()->toISOString();
+        $startDate = now()->subDays($recentDays)->startOfDay()->toISOString();
+        
         
         
         $params = [
@@ -106,6 +108,7 @@ class AuditQueryService
                 return $this->marshaler->unmarshalItem($item);
             });
 
+
             return [
                 'items' => $items->values()->toArray(),
                 'count' => $result['Count'] ?? 0,
@@ -118,7 +121,7 @@ class AuditQueryService
                 'count' => 0,
                 'scanned_count' => 0,
                 'lastEvaluatedKey' => null,
-                'error' => 'Failed to load recent audits'
+                'error' => 'Failed to load recent audits: ' . $e->getMessage()
             ];
         }
     }

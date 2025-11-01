@@ -37,6 +37,7 @@ AUDIT_DRIVER=dynamodb
 # DynamoDB Configuration
 DYNAMODB_AUDIT_TABLE=your-audit-table-name
 DYNAMODB_AUDIT_TTL_DAYS=730
+DYNAMODB_AUDIT_RECENT_DAYS=7
 
 # Queue Configuration (optional - improves performance)
 DYNAMODB_AUDIT_QUEUE_ENABLED=false
@@ -233,6 +234,7 @@ $result = $auditService->getAllAudits(
 | `AUDIT_DRIVER` | Audit driver to use | `database` |
 | `DYNAMODB_AUDIT_TABLE` | DynamoDB table name | `optimus-audit-logs` |
 | `DYNAMODB_AUDIT_TTL_DAYS` | Days before auto-deletion (null = infinite) | `730` |
+| `DYNAMODB_AUDIT_RECENT_DAYS` | Days to look back for recent audit browsing | `1` |
 | `DYNAMODB_AUDIT_QUEUE_ENABLED` | Enable queue processing for better performance | `false` |
 | `DYNAMODB_AUDIT_QUEUE_CONNECTION` | Queue connection to use (null = use default) | `null` |
 | `DYNAMODB_AUDIT_QUEUE_NAME` | Queue name for audit jobs (null = use default) | `null` |

@@ -9,6 +9,7 @@ use OwenIt\Auditing\Contracts\Auditable;
 use OwenIt\Auditing\Contracts\AuditDriver;
 use InfinityPaul\LaravelDynamoDbAuditing\Jobs\ProcessDynamoDbAudit;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class DynamoDbAuditDriver implements AuditDriver
 {
@@ -48,6 +49,15 @@ class DynamoDbAuditDriver implements AuditDriver
         try {
             $auditData = $model->toAudit();
 
+            Log::info('DynamoDB Audit Driver - Starting audit', [
+                'model' => get_class($model),
+                'model_id' => $model->getKey(),
+                'event' => $auditData['event'] ?? 'unknown',
+                'user_id' => $auditData['user_id'] ?? null,
+                'has_old_values' => !empty($auditData['old_values']),
+                'has_new_values' => !empty($auditData['new_values']),
+            ]);
+
             $auditId = uniqid('audit_', true);
 
             $item = [
@@ -78,6 +88,13 @@ class DynamoDbAuditDriver implements AuditDriver
             $item = array_filter($item, fn($value) => $value !== null);
 
             if (config('dynamodb-auditing.queue.enabled', false)) {
+                Log::info('DynamoDB Audit Driver - Dispatching to queue', [
+                    'audit_id' => $auditId,
+                    'table_name' => $this->tableName,
+                    'queue_connection' => config('dynamodb-auditing.queue.connection'),
+                    'queue_name' => config('dynamodb-auditing.queue.queue'),
+                ]);
+
                 $job = ProcessDynamoDbAudit::dispatch($item, $this->tableName, $this->dynamoDbConfig);
                 
                 if ($connection = config('dynamodb-auditing.queue.connection')) {
@@ -91,14 +108,30 @@ class DynamoDbAuditDriver implements AuditDriver
                 return null;
             }
 
+            Log::info('DynamoDB Audit Driver - Writing directly to DynamoDB', [
+                'audit_id' => $auditId,
+                'table_name' => $this->tableName,
+            ]);
+
             $this->dynamoDb->putItem([
                 'TableName' => $this->tableName,
                 'Item' => $this->marshaler->marshalItem($item),
             ]);
 
+            Log::info('DynamoDB Audit Driver - Successfully written to DynamoDB', [
+                'audit_id' => $auditId,
+            ]);
+
             return null;
 
         } catch (\Exception $e) {
+            Log::error('DynamoDB Audit Driver - Failed to audit', [
+                'model' => get_class($model),
+                'model_id' => $model->getKey(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
             return null;
         }
     }

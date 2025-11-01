@@ -59,6 +59,7 @@ return [
     | 2. GSI queries for recent audit browsing (dashboard views)
     |
     */
+    'recent_audits_days' => env('DYNAMODB_AUDIT_RECENT_DAYS', 1), // Days to look back for recent audits
 
     /*
     |--------------------------------------------------------------------------
