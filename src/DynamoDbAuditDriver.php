@@ -115,9 +115,6 @@ class DynamoDbAuditDriver implements AuditDriver
 
     protected function getPartitionKey(array $auditData): string
     {
-        if (!empty($auditData['user_id'])) {
-            return "USER#{$auditData['user_id']}";
-        }
         return "{$auditData['auditable_type']}#{$auditData['auditable_id']}";
     }
 
