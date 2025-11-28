@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 class ProcessDynamoDbAudit implements ShouldQueue
 {
@@ -37,6 +38,15 @@ class ProcessDynamoDbAudit implements ShouldQueue
             ]);
 
         } catch (\Exception $e) {
+
+            Log::error('ProcessDynamoDbAudit failed', [
+                'table'     => $this->tableName,
+                'auditData' => $this->auditData,
+                'error'     => $e->getMessage(),
+                'exception' => get_class($e),
+                'trace'     => $e->getTraceAsString(),
+            ]);
+
             // Re-throw to trigger retry mechanism
             
             throw $e;
