@@ -66,7 +66,7 @@ Add the DynamoDB driver configuration to your `config/audit.php` file in the `dr
         'connection' => null,
     ],
     'dynamodb' => [
-        'table' => env('DYNAMODB_AUDIT_TABLE', 'optimus-audit-logs'),
+        'table' => env('DYNAMODB_AUDIT_TABLE', 'your-audit-logs'),
         'region' => env('DYNAMODB_REGION', env('AWS_DEFAULT_REGION', 'us-east-1')),
     ],
 ],
@@ -232,7 +232,7 @@ $result = $auditService->getAllAudits(
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AUDIT_DRIVER` | Audit driver to use | `database` |
-| `DYNAMODB_AUDIT_TABLE` | DynamoDB table name | `optimus-audit-logs` |
+| `DYNAMODB_AUDIT_TABLE` | DynamoDB table name | `your-audit-logs` |
 | `DYNAMODB_AUDIT_TTL_DAYS` | Days before auto-deletion (null = infinite) | `730` |
 | `DYNAMODB_AUDIT_RECENT_DAYS` | Days to look back for recent audit browsing | `1` |
 | `DYNAMODB_AUDIT_QUEUE_ENABLED` | Enable queue processing for better performance | `false` |
