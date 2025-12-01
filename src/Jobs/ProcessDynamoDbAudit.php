@@ -14,9 +14,17 @@ class ProcessDynamoDbAudit implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
-    public int $maxExceptions = 3;
-    public int $timeout = 60;
+    public int $tries = 5;
+    public int $maxExceptions = 5;
+    public int $timeout = 120;
+
+    /**
+     * Calculate the number of seconds to wait before retrying the job.
+     */
+    public function backoff(): array
+    {
+        return [10, 30, 90, 180, 300];
+    }
 
     public function __construct(
         private array $auditData,
@@ -50,6 +58,6 @@ class ProcessDynamoDbAudit implements ShouldQueue
 
     public function retryUntil(): \DateTime
     {
-        return now()->addMinutes(10);
+        return now()->addMinutes(12);
     }
 }
