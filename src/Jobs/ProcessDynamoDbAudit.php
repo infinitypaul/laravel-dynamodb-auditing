@@ -3,13 +3,13 @@
 namespace InfinityPaul\LaravelDynamoDbAuditing\Jobs;
 
 use Aws\DynamoDb\DynamoDbClient;
+use Aws\DynamoDb\Exception\DynamoDbException;
 use Aws\DynamoDb\Marshaler;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class ProcessDynamoDbAudit implements ShouldQueue
 {
@@ -27,19 +27,35 @@ class ProcessDynamoDbAudit implements ShouldQueue
 
     public function handle(): void
     {
-        try {
 
+        try {
             $dynamoDb = new DynamoDbClient($this->dynamoDbConfig);
             $marshaler = new Marshaler();
-
+            $item = $marshaler->marshalItem($this->auditData);
             $dynamoDb->putItem([
                 'TableName' => $this->tableName,
-                'Item' => $marshaler->marshalItem($this->auditData),
+                'Item' => $item,
+            ]);
+        } catch (DynamoDbException $e) {
+            // Calculate item size in bytes (DynamoDB uses JSON serialization for size calculation)
+            $itemJson = json_encode($item);
+            $itemSize = strlen($itemJson);
+
+            logger()->error('[InfinityPaul\LaravelDynamoDbAuditing\Jobs\ProcessDynamoDbAudit::handle] DynamoDbException: ' . $e->getMessage(), [
+                'table'      => $this->tableName,
+                'item'       => $item,
+                'itemSize'   => $itemSize,
+                'itemSizeKB' => round($itemSize / 1024, 2),
+                'error'      => $e->getMessage(),
+                'exception'  => get_class($e),
+                'trace'      => $e->getTraceAsString(),
             ]);
 
+            // Re-throw to trigger retry mechanism
+            throw $e;
         } catch (\Exception $e) {
 
-            Log::error('ProcessDynamoDbAudit failed', [
+            logger()->error('[InfinityPaul\LaravelDynamoDbAuditing\Jobs\ProcessDynamoDbAudit::handle] Exception: ' . $e->getMessage(), [
                 'table'     => $this->tableName,
                 'auditData' => $this->auditData,
                 'error'     => $e->getMessage(),
@@ -48,7 +64,7 @@ class ProcessDynamoDbAudit implements ShouldQueue
             ]);
 
             // Re-throw to trigger retry mechanism
-            
+
             throw $e;
         }
     }
