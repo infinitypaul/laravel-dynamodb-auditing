@@ -19,7 +19,8 @@ class DynamoDbAuditDriver implements AuditDriver
 
     public function __construct()
     {
-        if (app()->environment('local') && env('DYNAMODB_ENDPOINT') !== null) {
+        // Use local DynamoDB if configured
+        if (config('dynamodb-auditing.use_local', false)) {
             $config = config('dynamodb-auditing.local');
         } else {
             $config = [
@@ -33,6 +34,7 @@ class DynamoDbAuditDriver implements AuditDriver
             }
         }
 
+        // Remove endpoint if not set to avoid AWS SDK issues
         if (empty($config['endpoint'])) {
             unset($config['endpoint']);
         }
